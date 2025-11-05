@@ -1,0 +1,59 @@
+// Este é o provedor do seu banco de dados
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Este é o gerador de cliente para Python
+generator py {
+  provider = "prisma-client-py"
+}
+
+// Modelo para os Dispositivos (a partir do LibreNMS)
+model Device {
+  id                 Int                @id @default(autoincrement())
+  librenms_device_id Int                @unique
+  hostname           String             @unique
+  ip_address         String
+  os                 String?
+  vendor             String?
+  last_polled        DateTime           @updatedAt // Atualiza automaticamente
+  
+  // Relação: Um dispositivo tem muitas interfaces
+  interfaces         NetworkInterface[]
+}
+
+// Modelo para as Interfaces (a partir do SSH)
+
+
+
+model NetworkInterface {
+  id                Int       @id @default(autoincrement())
+  interface_name    String
+  physical_status   String?
+  protocol_status   String?
+  description       String?
+  last_updated      DateTime  @updatedAt
+  
+  // --- NOVOS CAMPOS DE THRESHOLD ---
+  temp_high         Float?
+  temp_low          Float?
+  volt_high         Float?
+  volt_low          Float?
+  bias_high         Float?
+  bias_low          Float?
+  rx_power_high     Float?
+  rx_power_low      Float?
+  tx_power_high     Float?
+  tx_power_low      Float?
+  // --- FIM DOS NOVOS CAMPOS ---
+
+  // Relação: A interface pertence a um dispositivo
+  device            Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
+  device_id         Int
+  
+  // Garante que a combinação de device_id e interface_name seja única
+  @@unique([device_id, interface_name], name: "device_id_interface_name")
+}
+
+
