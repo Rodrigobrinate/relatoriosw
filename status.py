@@ -12,13 +12,13 @@ from prisma.models import Device, NetworkInterface, InterfaceStats
 SSH_USERNAME = "zabbix.view"
 SSH_PASSWORD = "view@123"
 
-# --- 2. LÓGICA DO SSH (Reutilizada do seu outro script) ---
+# --- 2. LÓGICA DO SSH (Idêntica, não modificada) ---
 def get_ssh_output(host, username, password, command):
     """
     Conecta via SSH, executa um comando lendo até o prompt,
     e só então envia 'quit'.
     """
-    print(f"  -> [SSH] Executando em {host}: '{command[:35]}...'")
+    print(f"   -> [SSH] Executando em {host}: '{command[:35]}...'")
     output = ""
     try:
         client = paramiko.SSHClient()
@@ -28,7 +28,7 @@ def get_ssh_output(host, username, password, command):
             look_for_keys=False, allow_agent=False, banner_timeout=200, timeout=10
         )
     except Exception as e:
-        print(f"    [ERRO-SSH] Falha ao conectar SSH em {host}: {e}")
+        print(f"     [ERRO-SSH] Falha ao conectar SSH em {host}: {e}")
         return None
     
     try:
@@ -61,7 +61,7 @@ def get_ssh_output(host, username, password, command):
                 break
 
             if time.time() - start_time > 20.0:
-                print(f"    [ERRO-SSH] Timeout de 20s atingido esperando o comando em {host}")
+                print(f"     [ERRO-SSH] Timeout de 20s atingido esperando o comando em {host}")
                 break
                 
             time.sleep(0.2)
@@ -76,11 +76,11 @@ def get_ssh_output(host, username, password, command):
         return "\n".join(clean_lines)
 
     except Exception as e:
-        print(f"    [ERRO-SSH] Erro durante a execução do comando SSH em {host}: {e}")
+        print(f"     [ERRO-SSH] Erro durante a execução do comando SSH em {host}: {e}")
         if 'client' in locals() and client: client.close()
         return None
 
-# --- 3. LÓGICA DE PARSING (NOVA) ---
+# --- 3. LÓGICA DE PARSING (Idêntica, não modificada) ---
 
 def _normalize_interface_name(name: str) -> str:
     """
@@ -149,17 +149,120 @@ def parse_interface_brief(output_text: str) -> dict:
                 "status": status_data
             }
         except (ValueError, IndexError) as e:
-            print(f"  [WARN-PARSE] Falha ao processar linha: '{line}'. Erro: {e}")
+            print(f"   [WARN-PARSE] Falha ao processar linha: '{line}'. Erro: {e}")
 
     return all_data
 
 
-# --- 4. ORQUESTRAÇÃO (MAIN) ---
+# --- 4. ORQUESTRAÇÃO (NOVA VERSÃO - PARALELA) ---
+
+async def process_stats_for_device(db: Prisma, dev: Device, semaphore: asyncio.Semaphore):
+    """
+    Processa um UNICO dispositivo, desde a busca de interfaces, 
+    coleta SSH (em thread) e salvamento no DB.
+    """
+    
+    COMMAND = "display interface brief"
+    
+    # 'async with semaphore' garante que apenas X tarefas executem ao mesmo tempo
+    async with semaphore:
+        print(f"\n--- [DEV] Iniciando Processamento: {dev.hostname} (IP: {dev.ip_address}) ---")
+
+        # --- PARTE 1: Buscar interfaces no DB (Async) ---
+        try:
+            db_interfaces = await db.networkinterface.find_many(
+                where={'device_id': dev.id}
+            )
+            
+            if not db_interfaces:
+                print(f"   [INFO] Nenhuma interface encontrada para {dev.hostname} no DB. Pulando dispositivo.")
+                return
+                
+            print(f"   [INFO] Encontradas {len(db_interfaces)} interfaces no DB. Buscando estatísticas...")
+
+        except Exception as e:
+            print(f"   [ERRO-DB] Falha ao buscar interfaces de {dev.hostname}: {e}")
+            return # Pula este dispositivo
+
+        # --- PARTE 2: Coleta SSH (Executada em Thread) ---
+        raw_output = None
+        try:
+            # asyncio.to_thread (Python 3.9+) roda a função síncrona
+            # em uma thread separada, sem bloquear o loop principal.
+            raw_output = await asyncio.to_thread(
+                get_ssh_output, 
+                dev.ip_address, 
+                SSH_USERNAME, 
+                SSH_PASSWORD, 
+                COMMAND
+            )
+        except Exception as e:
+            print(f"   [ERRO-THREAD] Erro ao executar get_ssh_output na thread para {dev.hostname}: {e}")
+            return # Pula este dispositivo
+        
+        if not raw_output or "Error:" in raw_output:
+            print(f"   [ERRO-SSH] Falha ao obter dados de {dev.ip_address} ou comando retornou erro. Pulando dispositivo.")
+            return
+
+        # --- PARTE 3: Parsing (Síncrono - Rápido) ---
+        try:
+            parsed_data = parse_interface_brief(raw_output)
+        except Exception as e:
+            print(f"   [ERRO-PARSE] Falha ao analisar dados de {dev.hostname}: {e}")
+            return
+
+        if not parsed_data:
+            print(f"   [WARN] Parser não encontrou dados na saída de {dev.ip_address}.")
+            return
+            
+        # --- PARTE 4: Salvar no DB (Async) ---
+        stats_salvas = 0
+        status_atualizado = 0
+        
+        for iface in db_interfaces:
+            if iface.interface_name in parsed_data:
+                
+                data = parsed_data[iface.interface_name]
+                stats_data = data['stats']
+                status_data = data['status']
+                
+                # 4a. Salva o histórico na nova tabela 'InterfaceStats'
+                try:
+                    stats_data['interface_id'] = iface.id
+                    await db.interfacestats.create(data=stats_data)
+                    stats_salvas += 1
+                except Exception as e:
+                    print(f"     [ERRO-DB-STATS] Falha ao salvar stats de {iface.interface_name}: {e}")
+
+                # 4b. Atualiza o status (up/down) na tabela 'NetworkInterface'
+                try:
+                    await db.networkinterface.update(
+                        where={'id': iface.id},
+                        data=status_data
+                    )
+                    status_atualizado += 1
+                except Exception as e:
+                    print(f"     [ERRO-DB-STATUS] Falha ao atualizar status de {iface.interface_name}: {e}")
+
+        print(f"\n--- [DEV] Concluído Processamento de {dev.hostname} ---")
+        print(f"   - {stats_salvas} novos registros de estatísticas salvos.")
+        print(f"   - {status_atualizado} interfaces com status (up/down) atualizado.")
 
 async def main():
     db = Prisma()
     
+    # ======================================================================
+    # AQUI VOCÊ CONTROLA A SIMULTANEIDADE
+    # Quantas conexões SSH podem ser abertas ao mesmo tempo.
+    MAX_CONCURRENT_TASKS = 30
+    # ======================================================================
+    
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
+    
     print("[INFO] Iniciando script de coleta de ESTATÍSTICAS de interface...")
+    print(f"[INFO] Limite de {MAX_CONCURRENT_TASKS} coletas simultâneas.")
+    
+    start_total_time = time.time() # Medir tempo total
     
     try:
         print("[DB] Conectando ao banco de dados...")
@@ -173,76 +276,23 @@ async def main():
             print("[ERRO] Nenhum dispositivo encontrado no banco de dados.")
             return
 
-        print(f"[INFO] Encontrados {len(devices)} dispositivos no banco de dados para verificar.")
+        print(f"[INFO] Encontrados {len(devices)} dispositivos. Criando tarefas...")
         
-        COMMAND = "display interface brief"
-        
+        # --- LÓGICA DE PARALELISMO ---
+        # 1. Cria uma lista de tarefas (tasks)
+        tasks = []
         for dev in devices:
-            print(f"\n--- [DEV] Processando Dispositivo: {dev.hostname} (IP: {dev.ip_address}) ---")
-            
-            # Busca todas as interfaces do DB *primeiro*
-            db_interfaces = await db.networkinterface.find_many(
-                where={'device_id': dev.id}
-            )
-            
-            if not db_interfaces:
-                print(f"  [INFO] Nenhuma interface encontrada para {dev.hostname} no DB. Pulando dispositivo.")
-                continue
-                
-            print(f"  [INFO] Encontradas {len(db_interfaces)} interfaces no DB. Buscando estatísticas...")
-            
-            # 1. Executa o SSH *UMA VEZ* por dispositivo
-            raw_output = get_ssh_output(dev.ip_address, SSH_USERNAME, SSH_PASSWORD, COMMAND)
-            
-            if not raw_output or "Error:" in raw_output:
-                print(f"  [ERRO-SSH] Falha ao obter dados de {dev.ip_address} ou comando retornou erro. Pulando dispositivo.")
-                continue
-            
-            # 2. Analisa (parse) a saída completa
-            # Retorna: {"XGE0/0/1": {"stats": {...}, "status": {...}}, ...}
-            parsed_data = parse_interface_brief(raw_output)
-            
-            if not parsed_data:
-                print(f"  [WARN] Parser não encontrou dados na saída de {dev.ip_address}.")
-                continue
-            
-            stats_salvas = 0
-            status_atualizado = 0
-            
-            # 3. Itera pelas interfaces do DB para salvar os dados
-            for iface in db_interfaces:
-                
-                # Verifica se o parser encontrou dados para esta interface
-                if iface.interface_name in parsed_data:
-                    
-                    data = parsed_data[iface.interface_name]
-                    stats_data = data['stats']
-                    status_data = data['status']
-                    
-                    # 4. Salva o histórico na nova tabela 'InterfaceStats'
-                    try:
-                        stats_data['interface_id'] = iface.id
-                        await db.interfacestats.create(data=stats_data)
-                        stats_salvas += 1
-                    except Exception as e:
-                        print(f"    [ERRO-DB-STATS] Falha ao salvar stats de {iface.interface_name}: {e}")
-
-                    # 5. Atualiza o status (up/down) na tabela 'NetworkInterface'
-                    try:
-                        await db.networkinterface.update(
-                            where={'id': iface.id},
-                            data=status_data
-                        )
-                        status_atualizado += 1
-                    except Exception as e:
-                        print(f"    [ERRO-DB-STATUS] Falha ao atualizar status de {iface.interface_name}: {e}")
-
-            print(f"\n--- [DEV] Concluído Processamento de {dev.hostname} ---")
-            print(f"  - {stats_salvas} novos registros de estatísticas salvos.")
-            print(f"  - {status_atualizado} interfaces com status (up/down) atualizado.")
+            tasks.append(process_stats_for_device(db, dev, semaphore))
+        
+        # 2. Executa todas as tarefas "simultaneamente"
+        await asyncio.gather(*tasks)
+        # --- FIM DA LÓGICA DE PARALELISMO ---
+        
+        end_total_time = time.time()
         
         print("\n==============================================")
-        print("[INFO] Coleta de ESTATÍSTICAS concluída.")
+        print(f"[INFO] Coleta de ESTATÍSTICAS concluída para todos os {len(devices)} dispositivos.")
+        print(f"[INFO] Tempo total de execução: {end_total_time - start_total_time:.2f} segundos.")
         
     except Exception as e:
         print(f"\n[ERRO FATAL] Ocorreu um erro: {e}")
