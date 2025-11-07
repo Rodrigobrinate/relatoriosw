@@ -10,25 +10,20 @@ RUN apt-get update && apt-get install -y cron \
 WORKDIR /app
 
 # 4. Instalar dependências Python
-COPY requirements.txt .
-RUN pip install -r requirements.txt 
-
+COPY requeriments.txt .
+RUN pip install -r requeriments.txt
 
 # 5. Copiar SEUS SCRIPTS e TUDO MAIS
-# O comando "COPY . ." já copia TODOS os arquivos (relatorio.py, treshold.py, etc.)
 COPY . .
 
-# 6. Configurar o CRON (AQUI É A CORREÇÃO)
-# Copie o SEU ARQUIVO de agendamento (que vamos criar abaixo)
-# para o diretório de configuração do cron.
+# *** NOVA LINHA ***
+# Cria um diretório para os logs separados
+RUN mkdir /app/logs
+
+# 6. Configurar o CRON
 COPY meus-jobs-cron /etc/cron.d/meus-jobs-cron
-
-# Dê a permissão correta para o arquivo de agendamento
 RUN chmod 0644 /etc/cron.d/meus-jobs-cron
-
-# Crie um "crontab" a partir do arquivo (passo de segurança)
 RUN crontab /etc/cron.d/meus-jobs-cron
 
 # 7. Comando para Iniciar
-# Inicia o daemon do cron em modo "foreground"
 CMD ["cron", "-f"]
