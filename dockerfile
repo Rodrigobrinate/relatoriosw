@@ -11,7 +11,8 @@ WORKDIR /app
 
 # 4. Instalar dependências Python
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt 
+
 
 # 5. Copiar SEUS SCRIPTS e TUDO MAIS
 # O comando "COPY . ." já copia TODOS os arquivos (relatorio.py, treshold.py, etc.)
