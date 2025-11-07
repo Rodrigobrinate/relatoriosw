@@ -15,4 +15,4 @@
 # Script 3 (status.py)
 2-59/5 * * * * root { /usr/local/bin/python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
-# IMPORTANTE: Deixe uma linha em branco no final.
+# IMPORTANTE: Deixe uma linha em branco no final.    
