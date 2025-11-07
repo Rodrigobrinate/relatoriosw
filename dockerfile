@@ -13,8 +13,7 @@ WORKDIR /app
 # 4. Instalar dependências Python
 COPY requeriments.txt .
 RUN pip install -r requeriments.txt
-RUN  /usr/local/bin/python -m prisma db push
-RUN  /usr/local/bin/python -m prisma generate
+
 # 5. Copiar SEUS SCRIPTS e TUDO MAIS
 COPY . .
 
@@ -26,6 +25,9 @@ RUN mkdir /app/logs
 COPY meus-jobs-cron /etc/cron.d/meus-jobs-cron
 RUN chmod 0644 /etc/cron.d/meus-jobs-cron
 RUN crontab /etc/cron.d/meus-jobs-cron
+RUN  /usr/local/bin/python -m prisma db push
+RUN  /usr/local/bin/python -m prisma generate
+COPY . .
 
 
 # 7. Comando para Iniciar
