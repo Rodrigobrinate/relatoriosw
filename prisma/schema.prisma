@@ -1,15 +1,12 @@
-// Este é o provedor do seu banco de dados
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// Este é o gerador de cliente para Python
 generator py {
   provider = "prisma-client-py"
 }
 
-// Modelo para os Dispositivos (a partir do LibreNMS)
 model Device {
   id                 Int                @id @default(autoincrement())
   librenms_device_id Int                @unique
@@ -17,43 +14,98 @@ model Device {
   ip_address         String
   os                 String?
   vendor             String?
-  last_polled        DateTime           @updatedAt // Atualiza automaticamente
-  
-  // Relação: Um dispositivo tem muitas interfaces
+  last_polled        DateTime           @updatedAt
   interfaces         NetworkInterface[]
 }
 
-// Modelo para as Interfaces (a partir do SSH)
-
-
-
 model NetworkInterface {
-  id                Int       @id @default(autoincrement())
-  interface_name    String
-  physical_status   String?
-  protocol_status   String?
-  description       String?
-  last_updated      DateTime  @updatedAt
+  id          Int       @id @default(autoincrement())
+  device_id   Int
+  device      Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
   
-  // --- NOVOS CAMPOS DE THRESHOLD ---
-  temp_high         Float?
-  temp_low          Float?
-  volt_high         Float?
-  volt_low          Float?
-  bias_high         Float?
-  bias_low          Float?
-  rx_power_high     Float?
-  rx_power_low      Float?
-  tx_power_high     Float?
-  tx_power_low      Float?
-  // --- FIM DOS NOVOS CAMPOS ---
-
-  // Relação: A interface pertence a um dispositivo
-  device            Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
-  device_id         Int
+  interface_name  String
+  description     String?
+  physical_status String? // Status do seu script de coleta principal (ex: relatorio.py)
+  protocol_status String? // Status do seu script de coleta principal
+  last_updated    DateTime  @updatedAt
+stats     InterfaceStats[]     // <-- ADICIONE ESTA LINHA
+  // Relações com as novas tabelas de histórico
+  modules   TransceiverModule[]
+  readings  TransceiverReading[]
   
-  // Garante que a combinação de device_id e interface_name seja única
   @@unique([device_id, interface_name], name: "device_id_interface_name")
 }
 
+// Tabela para dados "estáticos" (Módulo Físico)
+// Um novo registro só é criado quando o Serial Number muda.
+model TransceiverModule {
+  id          Int       @id @default(autoincrement())
+  interface_id Int
+  interface   NetworkInterface @relation(fields: [interface_id], references: [id], onDelete: Cascade)
+  
+  timestamp   DateTime  @default(now()) // Quando este módulo foi detectado
 
+  // Identificadores do Módulo
+  transceiver_type      String?
+  connector_type        String?
+  wavelength_nm         String?
+  transfer_distance_m   String?
+  vendor_name           String?
+  vendor_part_number    String?
+  serial_number         String? // A "chave" para detectar mudanças
+  manufacturing_date    String?
+  
+  // Limites (Thresholds)
+  temp_high             Float?
+  temp_low              Float?
+  volt_high             Float?
+  volt_low              Float?
+  bias_high             Float?
+  bias_low              Float?
+  rx_power_high         Float?
+  rx_power_low          Float?
+  tx_power_high         Float?
+  tx_power_low          Float?
+  rx_power_high_warning Float?
+  rx_power_low_warning  Float?
+  tx_power_high_warning Float?
+  tx_power_low_warning  Float?
+
+  @@index([interface_id, timestamp])
+}
+
+// Tabela para dados "dinâmicos" (Leituras)
+// Um novo registro é criado a cada 5 minutos.
+model TransceiverReading {
+  id          Int       @id @default(autoincrement())
+  interface_id Int
+  interface   NetworkInterface @relation(fields: [interface_id], references: [id], onDelete: Cascade)
+  
+  timestamp   DateTime  @default(now()) // Quando esta leitura foi feita
+  
+  // Status e Leituras
+  transceiver_status    String? // "present", "absent", "no_diag"
+  temperature           Float?
+  voltage               Float?
+ bias_current          Float? // MUDADO de String? para Float?
+  rx_power              Float? // MUDADO de String? para Float?
+  tx_power              Float? // MUDADO de String? para Float?
+
+  @@index([interface_id, timestamp])
+}
+
+model InterfaceStats {
+  id          Int       @id @default(autoincrement())
+  interface_id Int
+  interface   NetworkInterface @relation(fields: [interface_id], references: [id], onDelete: Cascade)
+  
+  timestamp   DateTime  @default(now())
+
+  // Estatísticas
+  in_uti      Float?    // Utilização de entrada (ex: 0.0)
+  out_uti     Float?    // Utilização de saída (ex: 0.0)
+  in_errors   BigInt?   // Usar BigInt para contadores é mais seguro
+  out_errors  BigInt?
+
+  @@index([interface_id, timestamp])
+}
