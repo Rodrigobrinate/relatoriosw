@@ -2,7 +2,8 @@
 FROM python:3.10-slim
 
 # 2. Instalar o CRON
-RUN apt-get update && apt-get install -y cron \
+RUN apt-get update && apt-get install -y cron libatomic1 \
+    # *** A MUDANÇA ESTÁ ACIMA ***
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
