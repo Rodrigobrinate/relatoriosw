@@ -47,6 +47,7 @@ def get_huawei_devices():
             return []
 
         all_devices = data['devices']
+        #all_devices = all_devices[0:5]
         print(f"Recebidos {len(all_devices)} dispositivos. Filtrando por icon='huawei.svg'...")
         
         # 2. A MÁGICA ESTÁ AQUI: Filtramos a lista no Python
@@ -238,6 +239,7 @@ async def sync_database(devices_from_api, interfaces_data_map):
     db = Prisma()
     
     print("\nIniciando sincronização com o banco de dados (Prisma)...")
+    #devices_from_api = devices_from_api[0:5]
     
     try:
         await db.connect()
@@ -251,12 +253,13 @@ async def sync_database(devices_from_api, interfaces_data_map):
                 data={
                     'create': {
                         'librenms_device_id': dev['device_id'],
-                        'hostname': dev['hostname'],
+                        'hostname': dev['sysName'],
                         'ip_address': dev['ip'],
                         'os': dev.get('os'),
                         'vendor': dev.get('vendor')
                     },
                     'update': {
+                        'hostname': dev['sysName'],
                         'librenms_device_id': dev['device_id'],
                         'ip_address': dev['ip'],
                         'os': dev.get('os'),
