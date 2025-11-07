@@ -20,7 +20,7 @@ COPY . .
 # 6. Configurar o CRON (AQUI É A CORREÇÃO)
 # Copie o SEU ARQUIVO de agendamento (que vamos criar abaixo)
 # para o diretório de configuração do cron.
-COPY meus-jobs-cron /etc/cron.d/meus-jobs-cron
+COPY meus-jobs-cron.txt /etc/cron.d/meus-jobs-cron.txt
 
 # Dê a permissão correta para o arquivo de agendamento
 RUN chmod 0644 /etc/cron.d/meus-jobs-cron
