@@ -24,6 +24,8 @@ RUN mkdir /app/logs
 COPY meus-jobs-cron /etc/cron.d/meus-jobs-cron
 RUN chmod 0644 /etc/cron.d/meus-jobs-cron
 RUN crontab /etc/cron.d/meus-jobs-cron
+RUN  /usr/local/bin/python -m prisma db push
+RUN  /usr/local/bin/python -m prisma generate
 
 # 7. Comando para Iniciar
 CMD ["cron", "-f"]
