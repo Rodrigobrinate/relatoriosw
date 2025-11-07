@@ -7,12 +7,12 @@
 # > /proc/1/fd/1      | -> Envia a saída do tee para o log principal do Docker
 
 # Script 1 (relatorio.py)
-*/5 * * * * root { /usr/local/bin/python /app/relatorio.py; } 2>&1 | tee -a /app/logs/relatorio.log > /proc/1/fd/1
+*/5 * * * * root { python /app/relatorio.py; } 2>&1 | tee -a /app/logs/relatorio.log > /proc/1/fd/1
 
 # Script 2 (treshold.py)
-1-59/5 * * * * root { /usr/local/bin/python /app/treshold.py; } 2>&1 | tee -a /app/logs/treshold.log > /proc/1/fd/1
+1-59/5 * * * * root { python /app/treshold.py; } 2>&1 | tee -a /app/logs/treshold.log > /proc/1/fd/1
 
 # Script 3 (status.py)
-2-59/5 * * * * root { /usr/local/bin/python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
+2-59/5 * * * * root { python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
 # IMPORTANTE: Deixe uma linha em branco no final.    
