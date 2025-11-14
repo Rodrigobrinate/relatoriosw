@@ -9,14 +9,16 @@
 # Script 1 (relatorio.py)
 */15 * * * * root { /usr/local/bin/python /app/relatorio.py; } 2>&1 | tee -a /app/logs/relatorio.log > /proc/1/fd/1
 
+*/15 * * * * root { /usr/local/bin/python /app/relatoriojn.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
+
 # Script 2 (treshold.py)
 */15 * * * * root { /usr/local/bin/python /app/treshold.py; } 2>&1 | tee -a /app/logs/treshold.log > /proc/1/fd/1
 
 # Script 3 (status.py)
-*/1 * * * * root { /usr/local/bin/python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
+*/2 * * * * root { /usr/local/bin/python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
-*/1 * * * * root { /usr/local/bin/python /app/optics_jn.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
+*/2 * * * * root { /usr/local/bin/python /app/optics_jn.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
-*/1 * * * * root { /usr/local/bin/python /app/tresholdjn.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
+*/2 * * * * root { /usr/local/bin/python /app/tresholdjn.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
 # IMPORTANTE: Deixe uma linha em branco no final.    
