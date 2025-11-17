@@ -15,7 +15,7 @@
 */15 * * * * root { /usr/local/bin/python /app/treshold.py; } 2>&1 | tee -a /app/logs/treshold.log > /proc/1/fd/1
 
 # Script 3 (status.py)
-*/2 * * * * root { /usr/local/bin/python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
+*/4 * * * * root { /usr/local/bin/python /app/status.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
 */4 * * * * root { /usr/local/bin/python /app/optics_jn.py; } 2>&1 | tee -a /app/logs/status.log > /proc/1/fd/1
 
